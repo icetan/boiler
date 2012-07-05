@@ -24,8 +24,15 @@ serve = (code) ->
     window.boiler={main:{}};
     var idModuleMap={};
     function emulateRequire(aliasIdMap){
-      function require(alias){
-        return idModuleMap[aliasIdMap[alias]]
+      function require(alias, windowName){
+        var exports = idModuleMap[aliasIdMap[alias]];
+        if(typeof windowName==='function'){
+          return windowName(exports);
+        }else if(typeof windowName==='string'){
+          return window[windowName];
+        }else{
+          return exports;
+        }
       }
       return require;
     }
@@ -67,7 +74,8 @@ updateExtensions = ->
             }(require);
             #{content}
             """, filename
-        func module, filename
+        try
+          func module, filename
         aliasIdMap = toDict([alias, pathToId path] for alias, path of module.__required)
         everything += boil pathToId(filename), aliasIdMap, code, filename
         updateExtensions()
