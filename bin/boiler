@@ -2,10 +2,11 @@
 // -*- js -*-
 
 var boiler = require('boiler')
-  , filename = process.argv[2];
+  , filename = process.argv[2]
+  , debug = process.argv[3];
 
 if (filename !== undefined) {
-  process.stdout.write(boiler(filename));
+  process.stdout.write(boiler(filename, debug === 'debug'));
 } else {
   console.log('Usage: boiler <file path>');
 }

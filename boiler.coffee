@@ -4,8 +4,10 @@ toDict = (kvps) ->
   dict[kvp[0]] = kvp[1] for kvp in kvps
   dict
 
+
 class Boiler
   constructor: ->
+    @debugging = off
     @filenameIdMap = {}
     @id = 0
     @everything = ''
@@ -29,6 +31,12 @@ class Boiler
       no
 
   _boil: (id, pathIdMap, code, filename) ->
+    #extra = ''
+    #if typeof exportSpoofs is 'string'
+    #  extra = "var #{exportSpoofs} = exports"
+    #else typeof exportSpoofs is 'object'
+    #  for alias, func of exportSpoofs
+    #    extra =
     """
     register.call(this,#{id},#{JSON.stringify pathIdMap},
     function(require,exports,module){
@@ -45,13 +53,7 @@ class Boiler
       function emulateRequire(pathIdMap){
         function require(path, opt){
           var exports = idModuleMap[pathIdMap[path]];
-          if(typeof opt==='function'){
-            return opt(exports);
-          }else if(typeof opt==='string'){
-            return window[opt];
-          }else{
-            return exports;
-          }
+          return exports;
         }
         return require;
       }
@@ -78,18 +80,22 @@ class Boiler
           deps = {}
           cmp = module._compile
           module.__boiler_hook_in = (resolve, path, opt={}) =>
-            #console.log "hook into #{filename}"
-            #            @config.excluded = yes if opt.excluded is yes
+            @debug "hook into #{path}:#{filename}"
             @config =
               parent:@config
               exclude:opt.exclude or []
               excluded:opt.excluded or @isExcluded path, @config
+              head:opt.head or ''
+              foot:opt.foot or ''
+              path:path
             #config.path = path
             #config.parent.deps = deps
             deps[path] = resolve path
-            #console.dir config
+            @debug @config
+          module.__boiler_hook_error = (err) =>
+            @debug "hook error #{@config.path}:#{filename}: #{err}"
           module.__boiler_hook_out = =>
-            #console.log "hook outof #{filename}"
+            @debug "hook outof #{@config.path}:#{filename}"
             @config = @config.parent if @config.parent
           module._compile = (content, filename) ->
             code = content
@@ -97,9 +103,15 @@ class Boiler
               """
               require = function(req) {
                 var require = function(path, opt) {
+                  var res;
                   module.__boiler_hook_in(req.resolve, path, opt);
-                  var res = req.call(this, path);
-                  module.__boiler_hook_out();
+                  try {
+                    res = req.call(this, path);
+                  } catch (err) {
+                    module.__boiler_hook_error(err);
+                  } finally {
+                    module.__boiler_hook_out();
+                  }
                   return res;
                 };
                 for (var i in req) {
@@ -111,23 +123,27 @@ class Boiler
               """, filename
           try
             func module, filename
-            #console.log "loaded #{config.path}:#{filename} is loading #{deps}"
-          catch error
-            #console.log 'error in '+filename+': '+error
           if not @config.excluded
-            #console.log "boiling #{config.path}:#{filename}"
+            @debug "boiling #{@config.path}:#{filename}"
             pathIdMap = toDict([path, @filenameToId fn] for path, fn of deps)
-            @everything += @_boil @filenameToId(filename), pathIdMap, code, filename
-          #else
-            #console.log 'excluded '+filename
+            @everything += @_boil @filenameToId(filename), pathIdMap,
+              "#{@config.head};\n#{code}\n;#{@config.foot};\n", filename
+          else
+            @debug 'excluded '+filename
           @hookExtensions()
         hook.__boiler_hook_orig = func
         require.extensions[ext] = hook
 
+  debug: ->
+    console.log.apply @, arguments if @debugging
 
-module.exports = (file) ->
+module.exports = (file, debug=off) ->
   boiler = new Boiler
+  boiler.debugging = debug
   boiler.require file
-  return boiler.serve()
+  if debug
+    ''
+  else
+    boiler.serve()
 
 module.exports.Boiler = Boiler

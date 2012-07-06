@@ -18,6 +18,7 @@
   Boiler = (function() {
 
     function Boiler() {
+      this.debugging = false;
       this.filenameIdMap = {};
       this.id = 0;
       this.everything = '';
@@ -55,7 +56,7 @@
     };
 
     Boiler.prototype.serve = function() {
-      return "(function(everything){\n  window.boiler={main:{}};\n  var idModuleMap={};\n  function emulateRequire(pathIdMap){\n    function require(path, opt){\n      var exports = idModuleMap[pathIdMap[path]];\n      if(typeof opt==='function'){\n        return opt(exports);\n      }else if(typeof opt==='string'){\n        return window[opt];\n      }else{\n        return exports;\n      }\n    }\n    return require;\n  }\n  function register(id,pathIdMap,factory){\n    var module={exports:{}};\n    factory.call(this,emulateRequire(pathIdMap),module.exports,module);\n    window.boiler.main=idModuleMap[id]=module.exports;\n  }\n  everything.call(this,register);\n}).call(this,function(register){\n" + this.everything + "\n});";
+      return "(function(everything){\n  window.boiler={main:{}};\n  var idModuleMap={};\n  function emulateRequire(pathIdMap){\n    function require(path, opt){\n      var exports = idModuleMap[pathIdMap[path]];\n      return exports;\n    }\n    return require;\n  }\n  function register(id,pathIdMap,factory){\n    var module={exports:{}};\n    factory.call(this,emulateRequire(pathIdMap),module.exports,module);\n    window.boiler.main=idModuleMap[id]=module.exports;\n  }\n  everything.call(this,register);\n}).call(this,function(register){\n" + this.everything + "\n});";
     };
 
     Boiler.prototype.unhookExtensions = function() {
@@ -90,28 +91,36 @@
                 if (opt == null) {
                   opt = {};
                 }
+                _this.debug("hook into " + path + ":" + filename);
                 _this.config = {
                   parent: _this.config,
                   exclude: opt.exclude || [],
-                  excluded: opt.excluded || _this.isExcluded(path, _this.config)
+                  excluded: opt.excluded || _this.isExcluded(path, _this.config),
+                  head: opt.head || '',
+                  foot: opt.foot || '',
+                  path: path
                 };
-                return deps[path] = resolve(path);
+                deps[path] = resolve(path);
+                return _this.debug(_this.config);
+              };
+              module.__boiler_hook_error = function(err) {
+                return _this.debug("hook error " + _this.config.path + ":" + filename + ": " + err);
               };
               module.__boiler_hook_out = function() {
+                _this.debug("hook outof " + _this.config.path + ":" + filename);
                 if (_this.config.parent) {
                   return _this.config = _this.config.parent;
                 }
               };
               module._compile = function(content, filename) {
                 code = content;
-                return cmp.call(this, "require = function(req) {\n  var require = function(path, opt) {\n    module.__boiler_hook_in(req.resolve, path, opt);\n    var res = req.call(this, path);\n    module.__boiler_hook_out();\n    return res;\n  };\n  for (var i in req) {\n    require[i] = req[i];\n  }\n  return require;\n}(require);\n" + content, filename);
+                return cmp.call(this, "require = function(req) {\n  var require = function(path, opt) {\n    var res;\n    module.__boiler_hook_in(req.resolve, path, opt);\n    try {\n      res = req.call(this, path);\n    } catch (err) {\n      module.__boiler_hook_error(err);\n    } finally {\n      module.__boiler_hook_out();\n    }\n    return res;\n  };\n  for (var i in req) {\n    require[i] = req[i];\n  }\n  return require;\n}(require);\n" + content, filename);
               };
               try {
                 func(module, filename);
-              } catch (error) {
-
-              }
+              } catch (_error) {}
               if (!_this.config.excluded) {
+                _this.debug("boiling " + _this.config.path + ":" + filename);
                 pathIdMap = toDict((function() {
                   var _results1;
                   _results1 = [];
@@ -121,7 +130,9 @@
                   }
                   return _results1;
                 }).call(_this));
-                _this.everything += _this._boil(_this.filenameToId(filename), pathIdMap, code, filename);
+                _this.everything += _this._boil(_this.filenameToId(filename), pathIdMap, "" + _this.config.head + ";\n" + code + "\n;" + _this.config.foot + ";\n", filename);
+              } else {
+                _this.debug('excluded ' + filename);
               }
               return _this.hookExtensions();
             };
@@ -133,15 +144,29 @@
       return _results;
     };
 
+    Boiler.prototype.debug = function() {
+      if (this.debugging) {
+        return console.log.apply(this, arguments);
+      }
+    };
+
     return Boiler;
 
   })();
 
-  module.exports = function(file) {
+  module.exports = function(file, debug) {
     var boiler;
+    if (debug == null) {
+      debug = false;
+    }
     boiler = new Boiler;
+    boiler.debugging = debug;
     boiler.require(file);
-    return boiler.serve();
+    if (debug) {
+      return '';
+    } else {
+      return boiler.serve();
+    }
   };
 
   module.exports.Boiler = Boiler;
