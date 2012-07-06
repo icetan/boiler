@@ -1,128 +1,132 @@
-shalow = (from, to) ->
-  to[key] = value for key, value of from
-  to
-serializeArray = (a) -> "['#{a.join "','"}']"
-rmext = (p) ->
-  for k of require.extensions
-    (return p.substr 0, p.length-k.length) if p.substr(p.length-k.length) is k
-  p
-readCode = (filename) -> 
-  code = ''
-  extfunc = require.extensions[path.extname(filename)]
-  extfunc {_compile: (code_) -> code = code_}, filename
-  code
-file = process.argv[2]
-require file
-cache = shalow require.cache, {}
-find = (id) ->
-  obj = cache[id]
-  delete cache[id]
-  l =  (find v.id for v in obj.children)
-  l = l.reduce((a,b) -> a.concat b) if l.length > 0
-  l.concat([obj])
-ordered = find __filename
-baseObj = ordered.pop()
-# OK to load other modules
-fs = require 'fs'
-path = require 'path'
-tounix = (p) -> path.normalize(p).replace /\\/g, '/'
-resolvePaths = (paths) -> (tounix path.relative(dir, p) for p in paths)
-findPackageJson = (start) ->
-dir = path.resolve __dirname, path.dirname file
-serve = (code) ->
-  """
-  (function(everything){
-    var res={};
-    function normalizeArray(parts, allowAboveRoot) {
-      // if the path tries to go above the root, `up` ends up > 0
-      var up = 0;
-      for (var i = parts.length - 1; i >= 0; i--) {
-        var last = parts[i];
-        if (last == '.') {
-          parts.splice(i, 1);
-        } else if (last === '..') {
-          parts.splice(i, 1);
-          up++;
-        } else if (up) {
-          parts.splice(i, 1);
-          up--;
-        }
-      }
+path_ = require 'path'
+toDict = (kvps) ->
+  dict = {}
+  dict[kvp[0]] = kvp[1] for kvp in kvps
+  dict
 
-      // if the path is allowed to go above the root, restore leading ..s
-      if (allowAboveRoot) {
-        for (; up--; up) {
-          parts.unshift('..');
-        }
-      }
+class Boiler
+  constructor: ->
+    @filenameIdMap = {}
+    @id = 0
+    @everything = ''
 
-      return parts;
-    }
-    function resolve() {
-      var resolvedPath = '',
-          resolvedAbsolute = false;
+  require: (file) ->
+    @config = exclude:[], path:''
+    @hookExtensions()
+    require path_.resolve file
+    @unhookExtensions()
 
-      for (var i = arguments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
-        var path = (i >= 0) ? arguments[i] : '';
+  filenameToId: (filename) ->
+    @filenameIdMap[filename] = @id+=1 if filename not of @filenameIdMap
+    @filenameIdMap[filename]
 
-        // Skip empty and invalid entries
-        if (typeof path !== 'string' || !path) {
-          continue;
-        }
+  isExcluded: (path, config) ->
+    if config.excluded or path in config.exclude
+      yes
+    else if config.parent
+      @isExcluded path, config.parent
+    else
+      no
 
-        resolvedPath = path + '/' + resolvedPath;
-        resolvedAbsolute = path.charAt(0) === '/';
-      }
+  _boil: (id, pathIdMap, code, filename) ->
+    """
+    register.call(this,#{id},#{JSON.stringify pathIdMap},
+    function(require,exports,module){
+    // file: #{path_.relative __dirname, filename}
+    #{code}
+    });
+    """
 
-      // At this point the path should be resolved to a full absolute path, but
-      // handle relative paths to be safe (might happen when process.cwd() fails)
-
-      // Normalize the path
-      resolvedPath = normalizeArray(resolvedPath.split('/').filter(function(p) {
-        return !!p;
-      }), !resolvedAbsolute).join('/');
-
-      return ((resolvedAbsolute ? '/' : '') + resolvedPath) || '.';
-    }
-
-    function emulateRequire(dirname,paths){
-      function require(path){
-        if (path.substr(0,1)==='.'){
-          return res[resolve(dirname, path)];
-        }else{
-          for (var i=0;i<paths.length;i++){
-            relfilename = paths[i]+'/'+path;
-            if (res[relfilename]){
-              return res[relfilename];
-            }
+  serve: ->
+    """
+    (function(everything){
+      window.boiler={main:{}};
+      var idModuleMap={};
+      function emulateRequire(pathIdMap){
+        function require(path, opt){
+          var exports = idModuleMap[pathIdMap[path]];
+          if(typeof opt==='function'){
+            return opt(exports);
+          }else if(typeof opt==='string'){
+            return window[opt];
+          }else{
+            return exports;
           }
         }
+        return require;
       }
-      return require;
-    }
-    function register(name,dirname,paths,factory){
-      var module={exports:{}};
-      factory.call(this,emulateRequire(dirname,paths),module.exports,module);
-      res[dirname+'/'+name]=module.exports;
-    }
-    everything.call(this,register);
-    window.boiler=emulateRequire(#{serializeArray resolvePaths baseObj.paths});
-  }).call(this,function(register){
-  #{code}
-  });
-  """
-boil = (obj) ->
-  name = rmext path.basename obj.filename
-  rfilename = tounix path.relative dir, obj.filename
-  modulePath = path.dirname rfilename
-  #modulePath = './'+rmext(rfilename) if modulePath.indexOf('node_modules') < 0
-  paths = resolvePaths obj.paths
-  code = readCode obj.filename
-  """
-  register.call(this,'#{name}','#{modulePath}',#{serializeArray paths},
-  function(require,exports,module){
-  #{code}
-  });
-  """
+      function register(id,pathIdMap,factory){
+        var module={exports:{}};
+        factory.call(this,emulateRequire(pathIdMap),module.exports,module);
+        window.boiler.main=idModuleMap[id]=module.exports;
+      }
+      everything.call(this,register);
+    }).call(this,function(register){
+    #{@everything}
+    });
+    """
 
-process.stdout.write serve (boil obj for obj in ordered).join '\n'
+  unhookExtensions: ->
+    for ext, func of require.extensions when func.__boiler_hook_orig?
+      require.extensions[ext] = func.__boiler_hook_orig
+
+  hookExtensions: ->
+    for ext, func of require.extensions when not func.__boiler_hook_orig?
+      do (ext, func) =>
+        hook = (module, filename) =>
+          code = ''
+          deps = {}
+          cmp = module._compile
+          module.__boiler_hook_in = (resolve, path, opt={}) =>
+            #console.log "hook into #{filename}"
+            @config =
+              parent:@config
+              exclude:opt.exclude or []
+              excluded:@isExcluded path, @config
+            #config.path = path
+            #config.parent.deps = deps
+            deps[path] = resolve path
+            #console.dir config
+          module.__boiler_hook_out = =>
+            #console.log "hook outof #{filename}"
+            @config = @config.parent if @config.parent
+          module._compile = (content, filename) ->
+            code = content
+            cmp.call this,
+              """
+              require = function(req) {
+                var require = function(path, opt) {
+                  module.__boiler_hook_in(req.resolve, path, opt);
+                  var res = req.call(this, path);
+                  module.__boiler_hook_out();
+                  return res;
+                };
+                for (var i in req) {
+                  require[i] = req[i];
+                }
+                return require;
+              }(require);
+              #{content}
+              """, filename
+          try
+            func module, filename
+            #console.log "loaded #{config.path}:#{filename} is loading #{deps}"
+          catch error
+            #console.log 'error in '+filename+': '+error
+          if not @config.excluded
+            #console.log "boiling #{config.path}:#{filename}"
+            pathIdMap = toDict([path, @filenameToId fn] for path, fn of deps)
+            @everything += @_boil @filenameToId(filename), pathIdMap, code, filename
+          #else
+            #console.log 'excluded '+filename
+          @hookExtensions()
+        hook.__boiler_hook_orig = func
+        require.extensions[ext] = hook
+
+
+module.exports = (file) ->
+  boiler = new Boiler
+  boiler.require file
+  return boiler.serve()
+
+module.exports.Boiler = Boiler

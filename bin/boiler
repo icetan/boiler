@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+// -*- js -*-
+
+var boiler = require('boiler')
+  , filename = process.argv[2];
+
+if (filename !== undefined) {
+  process.stdout.write(boiler(filename));
+} else {
+  console.log('Usage: boiler <file path>');
+}
