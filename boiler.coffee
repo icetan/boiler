@@ -1,9 +1,10 @@
 path_ = require 'path'
+relativeModule = (from, to) ->
+  './'+path_.relative(path_.dirname(from), to).replace /\\/g, '/'
 toDict = (kvps) ->
   dict = {}
   dict[kvp[0]] = kvp[1] for kvp in kvps
   dict
-
 
 class Boiler
   constructor: ->
@@ -30,13 +31,35 @@ class Boiler
     else
       no
 
-  _boil: (id, pathIdMap, code, filename) ->
-    #extra = ''
-    #if typeof exportSpoofs is 'string'
-    #  extra = "var #{exportSpoofs} = exports"
-    #else typeof exportSpoofs is 'object'
-    #  for alias, func of exportSpoofs
-    #    extra =
+  @injectScript: (injects={}) ->
+    ("var #{alias}=require('#{path}');\n" for alias, path of injects).join ''
+  @exportScript: (exp) ->
+    if exp then "\n;module.exports=#{exp};" else ''
+
+  @requireWrap: (content) ->
+    """
+    require = function(req) {
+      var require = function(path, opt) {
+        var res;
+        module.__boiler_hook_in(req.resolve, path, opt);
+        try {
+          res = req.call(this, path);
+        } catch (err) {
+          module.__boiler_hook_error(err);
+        } finally {
+          module.__boiler_hook_out();
+        }
+        return res;
+      };
+      for (var i in req) {
+        require[i] = req[i];
+      }
+      return require;
+    }(require);
+    #{content}
+    """
+
+  @boil: (id, pathIdMap, code, filename) ->
     """
     register.call(this,#{id},#{JSON.stringify pathIdMap},
     function(require,exports,module){
@@ -52,8 +75,7 @@ class Boiler
       var idModuleMap={};
       function emulateRequire(pathIdMap){
         function require(path, opt){
-          var exports = idModuleMap[pathIdMap[path]];
-          return exports;
+          return idModuleMap[pathIdMap[path]];
         }
         return require;
       }
@@ -76,21 +98,27 @@ class Boiler
     for ext, func of require.extensions when not func.__boiler_hook_orig?
       do (ext, func) =>
         hook = (module, filename) =>
-          code = ''
+          that = @
+          codeBrowser = ''
           deps = {}
           cmp = module._compile
           module.__boiler_hook_in = (resolve, path, opt={}) =>
             @debug "hook into #{path}:#{filename}"
-            @config =
+            injects = toDict(for alias, p of (opt.injects or {})
+              fn = relativeModule resolve(path), resolve(p)
+              [alias, fn])
+            @config = {
               parent:@config
               exclude:opt.exclude or []
               excluded:opt.excluded or @isExcluded path, @config
-              head:opt.head or ''
-              foot:opt.foot or ''
-              path:path
-            #config.path = path
-            #config.parent.deps = deps
+              # Dirty hack if modules won't export nicely insert script to help
+              #last:(if opt.last then "\n;#{opt.last};" else '')
+              exports:opt.exports
+              injects
+              path
+            }
             deps[path] = resolve path
+            #config.deps = deps
             @debug @config
           module.__boiler_hook_error = (err) =>
             @debug "hook error #{@config.path}:#{filename}: #{err}"
@@ -98,36 +126,19 @@ class Boiler
             @debug "hook outof #{@config.path}:#{filename}"
             @config = @config.parent if @config.parent
           module._compile = (content, filename) ->
-            code = content
-            cmp.call this,
-              """
-              require = function(req) {
-                var require = function(path, opt) {
-                  var res;
-                  module.__boiler_hook_in(req.resolve, path, opt);
-                  try {
-                    res = req.call(this, path);
-                  } catch (err) {
-                    module.__boiler_hook_error(err);
-                  } finally {
-                    module.__boiler_hook_out();
-                  }
-                  return res;
-                };
-                for (var i in req) {
-                  require[i] = req[i];
-                }
-                return require;
-              }(require);
-              #{content}
-              """, filename
+            code = Boiler.injectScript(that.config.injects) + content
+            codeBrowser = code + Boiler.exportScript(that.config.exports)
+            codeNode = Boiler.requireWrap code
+            cmp.call this, codeNode, filename
           try
             func module, filename
+          catch err
+            @debug "error: #{err}"
           if not @config.excluded
             @debug "boiling #{@config.path}:#{filename}"
             pathIdMap = toDict([path, @filenameToId fn] for path, fn of deps)
-            @everything += @_boil @filenameToId(filename), pathIdMap,
-              "#{@config.head};\n#{code}\n;#{@config.foot};\n", filename
+            @everything += Boiler.boil @filenameToId(filename), pathIdMap,
+              codeBrowser, filename
           else
             @debug 'excluded '+filename
           @hookExtensions()
