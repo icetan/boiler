@@ -79,10 +79,11 @@ class Boiler
           cmp = module._compile
           module.__boiler_hook_in = (resolve, path, opt={}) =>
             #console.log "hook into #{filename}"
+            #            @config.excluded = yes if opt.excluded is yes
             @config =
               parent:@config
               exclude:opt.exclude or []
-              excluded:@isExcluded path, @config
+              excluded:opt.excluded or @isExcluded path, @config
             #config.path = path
             #config.parent.deps = deps
             deps[path] = resolve path
