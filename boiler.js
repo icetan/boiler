@@ -67,11 +67,11 @@
     };
 
     Boiler.injectScript = function(injects) {
-      var alias, arg, args, strArgs;
+      var alias, arg, args, scripts, strArgs;
       if (injects == null) {
         injects = {};
       }
-      return ((function() {
+      scripts = (function() {
         var _results;
         _results = [];
         for (alias in injects) {
@@ -88,12 +88,17 @@
           _results.push("var " + alias + "=require(" + strArgs + ");\n");
         }
         return _results;
-      })()).join('');
+      })();
+      if (scripts.length > 0) {
+        return "// Boiler injects\n" + (scripts.join(''));
+      } else {
+        return '';
+      }
     };
 
     Boiler.exportScript = function(exp) {
       if (exp) {
-        return "\n;module.exports=" + exp + ";";
+        return "\n;\n// Boiler exports\nmodule.exports=" + exp + ";";
       } else {
         return '';
       }
@@ -104,11 +109,121 @@
     };
 
     Boiler.boil = function(id, pathIdMap, code, filename) {
-      return "register.call(this," + id + "," + (JSON.stringify(pathIdMap)) + ",\nfunction(require,exports,module){\n// file: " + (path_.relative(__dirname, filename)) + "\n" + code + "\n});";
+      return "register.call(this," + id + "," + (JSON.stringify(pathIdMap)) + ",\nfunction(require,exports,module){\n// Boiler file: " + (path_.relative(__dirname, filename)) + "\n" + code + "\n});";
     };
 
     Boiler.prototype.serve = function() {
       return "(function(everything){\n  window.boiler={main:{}};\n  var idModuleMap={};\n  function emulateRequire(pathIdMap){\n    function require(path, opt){\n      return idModuleMap[pathIdMap[path]];\n    }\n    return require;\n  }\n  function register(id,pathIdMap,factory){\n    var module={exports:{}};\n    factory.call(this,emulateRequire(pathIdMap),module.exports,module);\n    window.boiler.main=idModuleMap[id]=module.exports;\n  }\n  everything.call(this,register);\n}).call(this,function(register){\n" + this.everything + "\n});";
+    };
+
+    Boiler.prototype.getHook = function(ext, func) {
+      var hook,
+        _this = this;
+      hook = function(module, filename) {
+        var cmp, codeBrowser, deps, fn, path, pathIdMap, that;
+        that = _this;
+        codeBrowser = '';
+        deps = {};
+        cmp = module._compile;
+        module.__boiler_hook_in = function(resolve, path, opt) {
+          var alias, args, exclude, injects, p, reqOpt;
+          if (opt == null) {
+            opt = {};
+          }
+          _this.debug("hook into " + path + ":" + filename);
+          if (typeof opt === 'string') {
+            opt = {
+              exports: opt
+            };
+          } else if (opt === true || opt instanceof Array) {
+            opt = {
+              exclude: opt
+            };
+          } else if (opt instanceof Object && !hasProp(opt, ['exclude', 'exports', 'injects'])) {
+            opt = {
+              injects: opt
+            };
+          }
+          exclude = (function() {
+            var _i, _len, _ref, _results;
+            _ref = (opt.exclude instanceof Array ? opt.exclude : []);
+            _results = [];
+            for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+              p = _ref[_i];
+              _results.push(resolve(p));
+            }
+            return _results;
+          })();
+          injects = toDict((function() {
+            var _ref, _ref1, _results;
+            _ref = opt.injects || {};
+            _results = [];
+            for (alias in _ref) {
+              p = _ref[alias];
+              if (p instanceof Array) {
+                _ref1 = p, p = _ref1[0], reqOpt = _ref1[1];
+              }
+              args = [relativeModule(resolve(path), resolve(p))];
+              if (reqOpt != null) {
+                args.push(reqOpt);
+              }
+              _results.push([alias, args]);
+            }
+            return _results;
+          })());
+          _this.config = {
+            path: resolve(path),
+            exclude: exclude,
+            injects: injects,
+            exports: opt.exports,
+            excluded: opt.exclude === true || _this.isExcluded(resolve(path), _this.config),
+            parent: _this.config
+          };
+          deps[path] = resolve(path);
+          return _this.debug(_this.config);
+        };
+        module.__boiler_hook_error = function(err) {
+          return _this.debug("hook error " + _this.config.path + ":" + filename + ": " + err);
+        };
+        module.__boiler_hook_out = function() {
+          _this.debug("hook outof " + _this.config.path + ":" + filename);
+          if (_this.config.parent) {
+            return _this.config = _this.config.parent;
+          }
+        };
+        module._compile = function(content, filename) {
+          var code, codeNode;
+          code = Boiler.injectScript(that.config.injects);
+          code += content;
+          code += Boiler.exportScript(that.config.exports);
+          codeBrowser = code;
+          codeNode = Boiler.requireWrap(code);
+          return cmp.call(this, codeNode, filename);
+        };
+        try {
+          func(module, filename);
+        } catch (err) {
+          _this.debug("error: " + err);
+        }
+        if (!_this.config.excluded) {
+          _this.debug("boiling " + _this.config.path + ":" + filename);
+          pathIdMap = toDict((function() {
+            var _results;
+            _results = [];
+            for (path in deps) {
+              fn = deps[path];
+              _results.push([path, this.filenameToId(fn)]);
+            }
+            return _results;
+          }).call(_this));
+          _this.everything += Boiler.boil(_this.filenameToId(filename), pathIdMap, codeBrowser, filename);
+        } else {
+          _this.debug('excluded ' + filename);
+        }
+        return _this.hookExtensions();
+      };
+      hook.__boiler_hook_orig = func;
+      return hook;
     };
 
     Boiler.prototype.unhookExtensions = function() {
@@ -125,121 +240,13 @@
     };
 
     Boiler.prototype.hookExtensions = function() {
-      var ext, func, _ref, _results,
-        _this = this;
+      var ext, func, _ref, _results;
       _ref = require.extensions;
       _results = [];
       for (ext in _ref) {
         func = _ref[ext];
         if (!(func.__boiler_hook_orig != null)) {
-          _results.push((function(ext, func) {
-            var hook;
-            hook = function(module, filename) {
-              var cmp, codeBrowser, deps, fn, path, pathIdMap, that;
-              that = _this;
-              codeBrowser = '';
-              deps = {};
-              cmp = module._compile;
-              module.__boiler_hook_in = function(resolve, path, opt) {
-                var alias, args, exclude, injects, p, reqOpt;
-                if (opt == null) {
-                  opt = {};
-                }
-                _this.debug("hook into " + path + ":" + filename);
-                if (typeof opt === 'string') {
-                  opt = {
-                    exports: opt
-                  };
-                } else if (opt === true || opt instanceof Array) {
-                  opt = {
-                    exclude: opt
-                  };
-                } else if (opt instanceof Object && !hasProp(opt, ['exclude', 'exports', 'injects'])) {
-                  opt = {
-                    injects: opt
-                  };
-                }
-                exclude = (function() {
-                  var _i, _len, _ref1, _results1;
-                  _ref1 = (opt.exclude instanceof Array ? opt.exclude : []);
-                  _results1 = [];
-                  for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
-                    p = _ref1[_i];
-                    _results1.push(resolve(p));
-                  }
-                  return _results1;
-                })();
-                injects = toDict((function() {
-                  var _ref1, _ref2, _results1;
-                  _ref1 = opt.injects || {};
-                  _results1 = [];
-                  for (alias in _ref1) {
-                    p = _ref1[alias];
-                    if (p instanceof Array) {
-                      _ref2 = p, p = _ref2[0], reqOpt = _ref2[1];
-                    }
-                    args = [relativeModule(resolve(path), resolve(p))];
-                    if (reqOpt != null) {
-                      args.push(reqOpt);
-                    }
-                    _results1.push([alias, args]);
-                  }
-                  return _results1;
-                })());
-                _this.config = {
-                  path: resolve(path),
-                  exclude: exclude,
-                  injects: injects,
-                  exports: opt.exports,
-                  excluded: opt.exclude === true || _this.isExcluded(resolve(path), _this.config),
-                  parent: _this.config
-                };
-                deps[path] = resolve(path);
-                return _this.debug(_this.config);
-              };
-              module.__boiler_hook_error = function(err) {
-                return _this.debug("hook error " + _this.config.path + ":" + filename + ": " + err);
-              };
-              module.__boiler_hook_out = function() {
-                _this.debug("hook outof " + _this.config.path + ":" + filename);
-                if (_this.config.parent) {
-                  return _this.config = _this.config.parent;
-                }
-              };
-              module._compile = function(content, filename) {
-                var code, codeNode;
-                code = Boiler.injectScript(that.config.injects);
-                code += content;
-                code += Boiler.exportScript(that.config.exports);
-                codeBrowser = code;
-                codeNode = Boiler.requireWrap(code);
-                return cmp.call(this, codeNode, filename);
-              };
-              try {
-                func(module, filename);
-              } catch (err) {
-                _this.debug("error: " + err);
-              }
-              if (!_this.config.excluded) {
-                _this.debug("boiling " + _this.config.path + ":" + filename);
-                pathIdMap = toDict((function() {
-                  var _results1;
-                  _results1 = [];
-                  for (path in deps) {
-                    fn = deps[path];
-                    _results1.push([path, this.filenameToId(fn)]);
-                  }
-                  return _results1;
-                }).call(_this));
-                _this.everything += Boiler.boil(_this.filenameToId(filename), pathIdMap, codeBrowser, filename);
-              } else {
-                _this.debug('excluded ' + filename);
-              }
-              return _this.hookExtensions();
-            };
-            hook.__boiler_hook_orig = func;
-            return require.extensions[ext] = hook;
-          })(ext, func));
+          _results.push(require.extensions[ext] = this.getHook(ext, func));
         }
       }
       return _results;
