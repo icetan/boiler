@@ -5,6 +5,10 @@ toDict = (kvps) ->
   dict = {}
   dict[kvp[0]] = kvp[1] for kvp in kvps
   dict
+hasProp = (dict, props) ->
+  for prop in props
+    (return yes) if prop of dict
+  no
 
 class Boiler
   constructor: ->
@@ -32,7 +36,9 @@ class Boiler
       no
 
   @injectScript: (injects={}) ->
-    ("var #{alias}=require('#{path}');\n" for alias, path of injects).join ''
+    (for alias, args of injects
+      strArgs = (JSON.stringify arg for arg in args).join ','
+      "var #{alias}=require(#{strArgs});\n").join ''
   @exportScript: (exp) ->
     if exp then "\n;module.exports=#{exp};" else ''
 
@@ -104,18 +110,27 @@ class Boiler
           cmp = module._compile
           module.__boiler_hook_in = (resolve, path, opt={}) =>
             @debug "hook into #{path}:#{filename}"
+            # Check for convinience conversion
+            if typeof opt is 'string'
+              opt = exports:opt
+            else if opt is true or opt instanceof Array
+              opt = exclude:opt
+            else if opt instanceof Object and not hasProp opt, ['exclude', 'exports', 'injects']
+              opt = injects:opt
+
+            exclude = (resolve p for p in (if opt.exclude instanceof Array then opt.exclude else []))
             injects = toDict(for alias, p of (opt.injects or {})
-              fn = relativeModule resolve(path), resolve(p)
-              [alias, fn])
+              [p, reqOpt] = p if p instanceof Array
+              args = [relativeModule resolve(path), resolve(p)]
+              args.push reqOpt if reqOpt?
+              [alias, args])
             @config = {
-              parent:@config
-              exclude:opt.exclude or []
-              excluded:opt.excluded or @isExcluded path, @config
-              # Dirty hack if modules won't export nicely insert script to help
-              #last:(if opt.last then "\n;#{opt.last};" else '')
-              exports:opt.exports
+              path:resolve path
+              exclude
               injects
-              path
+              exports:opt.exports
+              excluded:opt.exclude is true or @isExcluded resolve(path), @config
+              parent:@config
             }
             deps[path] = resolve path
             #config.deps = deps
@@ -126,8 +141,10 @@ class Boiler
             @debug "hook outof #{@config.path}:#{filename}"
             @config = @config.parent if @config.parent
           module._compile = (content, filename) ->
-            code = Boiler.injectScript(that.config.injects) + content
-            codeBrowser = code + Boiler.exportScript(that.config.exports)
+            code =  Boiler.injectScript(that.config.injects)
+            code += content
+            code += Boiler.exportScript(that.config.exports)
+            codeBrowser = code
             codeNode = Boiler.requireWrap code
             cmp.call this, codeNode, filename
           try
