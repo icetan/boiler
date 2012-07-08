@@ -1,12 +1,22 @@
 #!/usr/bin/env node
 // -*- js -*-
 
-var boiler = require('boiler')
+var path = require('path')
+  , Boiler = require('boiler').Boiler
   , filename = process.argv[2]
-  , debug = process.argv[3];
+  , debug = (process.argv[3] === 'debug')
+  , boiler
+  , code
+  ;
+require('boiler').debug = debug;
 
 if (filename !== undefined) {
-  process.stdout.write(boiler(filename, debug === 'debug'));
+  boiler = new Boiler();
+  boiler.add(path.resolve(filename));
+  code = boiler.serve();
+  if (!debug) {
+    process.stdout.write(code);
+  }
 } else {
   console.log('Usage: boiler <file path>');
 }
