@@ -208,6 +208,9 @@ class Boiler
       try
         func module_, filename
       catch err
+        msg = err.toString()
+        if msg.indexOf('Error: Cannot find module') is 0
+          console.warn msg, 'in file:', filename
         debug "Boiler error when running wrapped code:", err.stack
       # Add hooks if new extensions have been added
       Boiler.hookExtensions pot

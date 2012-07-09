@@ -271,7 +271,7 @@
     Boiler.getHook = function(pot, ext, func) {
       var hook;
       hook = function(module_, filename) {
-        var cmp;
+        var cmp, msg;
         cmp = module_._compile;
         module_.__boiler_hook_in = function() {
           var args;
@@ -304,6 +304,10 @@
         try {
           func(module_, filename);
         } catch (err) {
+          msg = err.toString();
+          if (msg.indexOf('Error: Cannot find module') === 0) {
+            console.warn(msg, 'in file:', filename);
+          }
           debug("Boiler error when running wrapped code:", err.stack);
         }
         return Boiler.hookExtensions(pot);
