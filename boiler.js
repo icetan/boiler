@@ -276,17 +276,19 @@
         module_.__boiler_hook_in = function() {
           var args;
           args = 1 <= arguments.length ? __slice.call(arguments, 0) : [];
-          return Boiler.inHook.apply(Boiler, [pot].concat(__slice.call(args)));
+          Boiler.inHook.apply(Boiler, [pot].concat(__slice.call(args)));
+          return module_.__boiler_hook_in = (function() {});
+        };
+        module_.__boiler_hook_out = function() {
+          var args;
+          args = 1 <= arguments.length ? __slice.call(arguments, 0) : [];
+          Boiler.outHook.apply(Boiler, [pot].concat(__slice.call(args)));
+          return module_.__boiler_hook_out = (function() {});
         };
         module_.__boiler_hook_error = function() {
           var args;
           args = 1 <= arguments.length ? __slice.call(arguments, 0) : [];
           return Boiler.errorHook.apply(Boiler, [pot].concat(__slice.call(args)));
-        };
-        module_.__boiler_hook_out = function() {
-          var args;
-          args = 1 <= arguments.length ? __slice.call(arguments, 0) : [];
-          return Boiler.outHook.apply(Boiler, [pot].concat(__slice.call(args)));
         };
         module_._compile = function(content, filename) {
           var code, nodeCode, res;
