@@ -1,10 +1,10 @@
 {
     "name": "boiler"
   , "description": "Bundle Node.js libraries for the browser"
-  , "version": "0.1.1"
+  , "version": "0.1.2"
   , "homepage": "https://github.com/icetan/boiler"
   , "author": "Christopher Fredén <c.freden@gmail.com>"
-  , "keywords": ["js", "bundling", "require", "CommonJS"]
+  , "keywords": ["js", "bundling", "require", "CommonJS", "browser"]
   , "repository": {
       "type": "git"
     , "url": "https://github.com/icetan/boiler.git"
