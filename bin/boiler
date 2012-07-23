@@ -3,16 +3,28 @@
 
 var path = require('path')
   , Boiler = require('boiler').Boiler
-  , filename = process.argv[2]
-  , debug = (process.argv[3] === 'debug')
+  , files = []
+  , i, len
+  , debug = false
   , boiler
   , code
   ;
+
+for (i = 2, len = process.argv.length; i < len; i++) {
+  if (process.argv[i] === '-d') {
+    debug = true;
+  } else {
+    files.push(process.argv[i]);
+  }
+}
+
 require('boiler').debug = debug;
 
-if (filename !== undefined) {
+if (files.length > 0) {
   boiler = new Boiler();
-  boiler.add(path.resolve(filename));
+  for (i = 0, len = files.length; i < len; i++) {
+    boiler.add(path.resolve(files[i]));
+  }
   code = boiler.serve();
   if (!debug) {
     process.stdout.write(code);
