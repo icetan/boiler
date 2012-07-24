@@ -200,61 +200,66 @@
     };
 
     Boiler.inHook = function(pot, resolve, path, opt) {
-      var alias, args, exclude, filename, injects, p, reqOpt;
+      var alias, args, cfg, exclude, filename, injects, p, reqOpt;
       if (opt == null) {
         opt = {};
       }
       debug("hook into " + path);
-      filename = resolve(path);
-      if (typeof opt === 'string') {
-        opt = {
-          exports: opt
-        };
-      } else if (opt === true || opt instanceof Array) {
-        opt = {
-          exclude: opt
-        };
-      } else if (opt instanceof Object && !hasProp(opt, ['exclude', 'exports', 'injects'])) {
-        opt = {
-          injects: opt
+      if (path in pot.config.deps) {
+        cfg = pot.config.deps[path];
+      } else {
+        filename = resolve(path);
+        if (typeof opt === 'string') {
+          opt = {
+            exports: opt
+          };
+        } else if (opt === true || opt instanceof Array) {
+          opt = {
+            exclude: opt
+          };
+        } else if (opt instanceof Object && !hasProp(opt, ['exclude', 'exports', 'injects'])) {
+          opt = {
+            injects: opt
+          };
+        }
+        exclude = (function() {
+          var _i, _len, _ref, _results;
+          _ref = (opt.exclude instanceof Array ? opt.exclude : []);
+          _results = [];
+          for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+            p = _ref[_i];
+            _results.push(resolve(p));
+          }
+          return _results;
+        })();
+        injects = toDict((function() {
+          var _ref, _ref1, _results;
+          _ref = opt.injects || {};
+          _results = [];
+          for (alias in _ref) {
+            p = _ref[alias];
+            if (p instanceof Array) {
+              _ref1 = p, p = _ref1[0], reqOpt = _ref1[1];
+            }
+            args = [relativeModule(filename, resolve(p))];
+            if (reqOpt != null) {
+              args.push(reqOpt);
+            }
+            _results.push([alias, args]);
+          }
+          return _results;
+        })());
+        cfg = {
+          filename: filename,
+          exclude: exclude,
+          injects: injects,
+          exports: opt.exports,
+          excluded: opt.exclude === true || Boiler.isExcluded(filename, pot.config),
+          parent: pot.config,
+          deps: {}
         };
       }
-      exclude = (function() {
-        var _i, _len, _ref, _results;
-        _ref = (opt.exclude instanceof Array ? opt.exclude : []);
-        _results = [];
-        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-          p = _ref[_i];
-          _results.push(resolve(p));
-        }
-        return _results;
-      })();
-      injects = toDict((function() {
-        var _ref, _ref1, _results;
-        _ref = opt.injects || {};
-        _results = [];
-        for (alias in _ref) {
-          p = _ref[alias];
-          if (p instanceof Array) {
-            _ref1 = p, p = _ref1[0], reqOpt = _ref1[1];
-          }
-          args = [relativeModule(filename, resolve(p))];
-          if (reqOpt != null) {
-            args.push(reqOpt);
-          }
-          _results.push([alias, args]);
-        }
-        return _results;
-      })());
-      return pot.config = pot.config.deps[path] = {
-        filename: filename,
-        exclude: exclude,
-        injects: injects,
-        exports: opt.exports,
-        excluded: opt.exclude === true || Boiler.isExcluded(filename, pot.config),
-        parent: pot.config,
-        deps: {}
-      };
+      return pot.config = pot.config.deps[path] = cfg;
     };
 
     Boiler.errorHook = function(pot, err) {
@@ -276,14 +281,12 @@
         module_.__boiler_hook_in = function() {
           var args;
           args = 1 <= arguments.length ? __slice.call(arguments, 0) : [];
-          Boiler.inHook.apply(Boiler, [pot].concat(__slice.call(args)));
-          return module_.__boiler_hook_in = (function() {});
+          return Boiler.inHook.apply(Boiler, [pot].concat(__slice.call(args)));
         };
         module_.__boiler_hook_out = function() {
           var args;
           args = 1 <= arguments.length ? __slice.call(arguments, 0) : [];
-          Boiler.outHook.apply(Boiler, [pot].concat(__slice.call(args)));
-          return module_.__boiler_hook_out = (function() {});
+          return Boiler.outHook.apply(Boiler, [pot].concat(__slice.call(args)));
         };
         module_.__boiler_hook_error = function() {
           var args;

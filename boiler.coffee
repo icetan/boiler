@@ -152,29 +152,34 @@ class Boiler
 
   @inHook: (pot, resolve, path, opt={}) ->
     debug "hook into #{path}"
-    filename = resolve path
-    # Check for convinience conversion
-    if typeof opt is 'string'
-      opt = exports:opt
-    else if opt is true or opt instanceof Array
-      opt = exclude:opt
-    else if opt instanceof Object and not hasProp opt, ['exclude', 'exports', 'injects']
-      opt = injects:opt
-    exclude = (resolve p for p in (if opt.exclude instanceof Array then opt.exclude else []))
-    injects = toDict(for alias, p of (opt.injects or {})
-      [p, reqOpt] = p if p instanceof Array
-      args = [relativeModule filename, resolve(p)]
-      args.push reqOpt if reqOpt?
-      [alias, args])
-    pot.config = pot.config.deps[path] = {
-      filename
-      exclude
-      injects
-      exports:opt.exports
-      excluded:opt.exclude is true or Boiler.isExcluded filename, pot.config
-      parent:pot.config
-      deps:{}
-    }
+    if path of pot.config.deps
+      debug "#{path} already configured!"
+      cfg = pot.config.deps[path]
+    else
+      filename = resolve path
+      # Check for convinience conversion
+      if typeof opt is 'string'
+        opt = exports:opt
+      else if opt is true or opt instanceof Array
+        opt = exclude:opt
+      else if opt instanceof Object and not hasProp opt, ['exclude', 'exports', 'injects']
+        opt = injects:opt
+      exclude = (resolve p for p in (if opt.exclude instanceof Array then opt.exclude else []))
+      injects = toDict(for alias, p of (opt.injects or {})
+        [p, reqOpt] = p if p instanceof Array
+        args = [relativeModule filename, resolve(p)]
+        args.push reqOpt if reqOpt?
+        [alias, args])
+      cfg = {
+        filename
+        exclude
+        injects
+        exports:opt.exports
+        excluded:opt.exclude is true or Boiler.isExcluded filename, pot.config
+        parent:pot.config
+        deps:{}
+      }
+    pot.config = pot.config.deps[path] = cfg
   @errorHook: (pot, err) ->
     debug "hook error #{pot.config.filename}: #{err}"
   @outHook: (pot) ->
@@ -184,12 +189,8 @@ class Boiler
   @getHook: (pot, ext, func) ->
     hook = (module_, filename) ->
       cmp = module_._compile
-      module_.__boiler_hook_in = (args...) ->
-        Boiler.inHook pot, args...
-        module_.__boiler_hook_in = (->)
-      module_.__boiler_hook_out = (args...) ->
-        Boiler.outHook pot, args...
-        module_.__boiler_hook_out = (->)
+      module_.__boiler_hook_in = (args...) -> Boiler.inHook pot, args...
+      module_.__boiler_hook_out = (args...) -> Boiler.outHook pot, args...
       module_.__boiler_hook_error = (args...) -> Boiler.errorHook pot, args...
       module_._compile = (content, filename) ->
         # TODO: make sure it is boiler.js and not some other file with the
