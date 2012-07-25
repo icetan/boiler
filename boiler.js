@@ -216,7 +216,9 @@
     };
 
     Boiler.requireWrap = function(code) {
-      return "require = (" + (Boiler.fakeRequire.toString().replace(/\n\s*/g, '')) + ")(require);" + code;
+      var fakeScript;
+      fakeScript = Boiler.fakeRequire.toString().replace(/\n\s*/g, '');
+      return "require = (" + fakeScript + ")(require);" + code;
     };
 
     Boiler.registerWrap = function(id, pathIdMap, code, filename) {

@@ -102,7 +102,8 @@ class Boiler
     fake
 
   @requireWrap: (code) ->
-    "require = (#{Boiler.fakeRequire.toString().replace(/\n\s*/g,'')})(require);#{code}"
+    fakeScript = Boiler.fakeRequire.toString().replace(/\n\s*/g,'')
+    "require = (#{fakeScript})(require);#{code}"
 
   @registerWrap: (id, pathIdMap, code, filename) ->
     """
