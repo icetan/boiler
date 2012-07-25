@@ -1,3 +1,5 @@
+boilerCacheCleared = no
+
 debug = (args...) -> console.log args... if module.exports.debug
 
 path_ = require 'path'
@@ -19,6 +21,10 @@ class Pot
 
   require: ->
     Boiler.hookExtensions @
+    if not boilerCacheCleared
+      delete require.cache[module.filename]
+      debug 'removing boiler.js code from cache'
+      boilerCacheCleared = yes
     mod = require @config.filename
     Boiler.unhookExtensions()
     mod
@@ -188,15 +194,17 @@ class Boiler
 
   @getHook: (pot, ext, func) ->
     hook = (module_, filename) ->
+      # TODO: make sure it is boiler.js and not some other file with the
+      # same name.
+      isBoiler = path_.basename(module_.filename, '.js') is 'boiler'
       cmp = module_._compile
       module_.__boiler_hook_in = (args...) -> Boiler.inHook pot, args...
       module_.__boiler_hook_out = (args...) -> Boiler.outHook pot, args...
       module_.__boiler_hook_error = (args...) -> Boiler.errorHook pot, args...
       module_._compile = (content, filename) ->
-        # TODO: make sure it is boiler.js and not some other file with the
-        # same name.
         debug module_.filename
-        if path_.basename(module_.filename, '.js') is 'boiler'
+        if isBoiler
+          debug 'this is thee boiler, using fake code'
           code = nodeCode = pot.config.code = module.exports.__boiler_code
         else
           code = pot.config.code = Boiler.injectExportWrap pot, content
