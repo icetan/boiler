@@ -72,19 +72,6 @@ class Boiler
     else
       no
 
-  #@fakeRequire: (req) ->
-  #  fake = (path, opt) ->
-  #    module.__boiler_hook_in(req.resolve, path, opt)
-  #    try
-  #      res = req.call(this, path)
-  #    catch err
-  #      module.__boiler_hook_error(err)
-  #    finally
-  #      module.__boiler_hook_out()
-  #    res
-  #  fake[k] = v for k,v of req
-  #  fake
-
   @injectScript: (injects={}) ->
     scripts = (for alias, args of injects
       strArgs = (JSON.stringify arg for arg in args).join ','
@@ -101,29 +88,21 @@ class Boiler
     code +
     Boiler.exportScript(pot.config.exports)
 
+  @fakeRequire: (req) ->
+    fake = (path, opt) ->
+      module.__boiler_hook_in(req.resolve, path, opt)
+      try
+        res = req.call(this, path)
+      catch err
+        module.__boiler_hook_error(err)
+      finally
+        module.__boiler_hook_out()
+      res
+    fake[k] = v for k,v of req
+    fake
+
   @requireWrap: (code) ->
-    #"require = (#{Boiler.fakeRequire.toString()})(require);"
-    """
-    require = function(req) {
-      var fake = function(path, opt) {
-        var res;
-        module.__boiler_hook_in(req.resolve, path, opt);
-        try {
-          res = req.call(this, path);
-        } catch (err) {
-          module.__boiler_hook_error(err);
-        } finally {
-          module.__boiler_hook_out();
-        }
-        return res;
-      };
-      for (var i in req) {
-        fake[i] = req[i];
-      }
-      return fake;
-    }(require);
-    #{code}
-    """
+    "require = (#{Boiler.fakeRequire.toString().replace(/\n\s*/g,'')})(require);#{code}"
 
   @registerWrap: (id, pathIdMap, code, filename) ->
     """

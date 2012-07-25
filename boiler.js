@@ -194,8 +194,29 @@
       return Boiler.injectScript(pot.config.injects) + code + Boiler.exportScript(pot.config.exports);
     };
 
+    Boiler.fakeRequire = function(req) {
+      var fake, k, v;
+      fake = function(path, opt) {
+        var res;
+        module.__boiler_hook_in(req.resolve, path, opt);
+        try {
+          res = req.call(this, path);
+        } catch (err) {
+          module.__boiler_hook_error(err);
+        } finally {
+          module.__boiler_hook_out();
+        }
+        return res;
+      };
+      for (k in req) {
+        v = req[k];
+        fake[k] = v;
+      }
+      return fake;
+    };
+
     Boiler.requireWrap = function(code) {
-      return "require = function(req) {\n  var fake = function(path, opt) {\n    var res;\n    module.__boiler_hook_in(req.resolve, path, opt);\n    try {\n      res = req.call(this, path);\n    } catch (err) {\n      module.__boiler_hook_error(err);\n    } finally {\n      module.__boiler_hook_out();\n    }\n    return res;\n  };\n  for (var i in req) {\n    fake[i] = req[i];\n  }\n  return fake;\n}(require);\n" + code;
+      return "require = (" + (Boiler.fakeRequire.toString().replace(/\n\s*/g, '')) + ")(require);" + code;
     };
 
     Boiler.registerWrap = function(id, pathIdMap, code, filename) {
