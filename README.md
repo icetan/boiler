@@ -54,7 +54,7 @@ module.exports = {
 To use browser javascripts as Node.js modules you can require them with boiler:
 
 *Warning: example doesn't work without injecting a fake window object, but can
-bee done in theory*
+be done in theory*
 
 ```javascript
 // my-node-program.js
