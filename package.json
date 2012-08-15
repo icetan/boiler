@@ -17,4 +17,5 @@
   , "bin": {
       "boiler": "./bin/boiler"
   }
+  , "files": ["boiler.js", "README.md", "LICENSE", "bin/boiler"]
 }
