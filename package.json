@@ -7,8 +7,12 @@
   , "keywords": ["js", "bundling", "require", "CommonJS", "browser"]
   , "repository": {
       "type": "git"
-    , "url": "https://github.com/icetan/boiler.git"
+    , "url": "git://github.com/icetan/boiler.git"
   }
+  , "licenses":     [{
+      "type": "MIT",
+      "url": "https://raw.github.com/icetan/boiler/master/LICENSE"
+  }]
   , "main": "./boiler.js"
   , "bin": {
       "boiler": "./bin/boiler"
