@@ -1,3 +1,4 @@
+[![build status](https://secure.travis-ci.org/icetan/boiler.png)](http://travis-ci.org/icetan/boiler)
 # Boiler
 Bundle Node.js compatible modules to one browser compatible file.
 
