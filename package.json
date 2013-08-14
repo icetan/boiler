@@ -1,21 +1,27 @@
 {
-    "name": "boiler"
-  , "description": "Bundle Node.js libraries for the browser"
-  , "version": "0.1.4"
-  , "homepage": "https://github.com/icetan/boiler"
-  , "author": "Christopher Fredén <c.freden@gmail.com>"
-  , "keywords": ["js", "bundling", "require", "CommonJS", "browser"]
-  , "repository": {
-      "type": "git"
-    , "url": "git://github.com/icetan/boiler.git"
-  }
-  , "licenses":     [{
+  "name": "boiler",
+  "description": "Bundle Node.js libraries for the browser",
+  "version": "0.1.5",
+  "homepage": "https://github.com/icetan/boiler",
+  "author": "Christopher Fredén <c.freden@gmail.com>",
+  "keywords": ["js", "bundling", "require", "CommonJS", "browser"],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/icetan/boiler.git"
+  },
+  "licenses": [{
       "type": "MIT",
       "url": "https://raw.github.com/icetan/boiler/master/LICENSE"
-  }]
-  , "main": "./boiler.js"
-  , "bin": {
+  }],
+  "devDependencies": {
+    "coffee-script": "*"
+  },
+  "main": "./boiler.js",
+  "bin": {
       "boiler": "./bin/boiler"
+  },
+  "files": ["boiler.js", "README.md", "LICENSE", "bin/boiler"],
+  "scripts": {
+    "prepublish": "node node_modules\\.bin\\coffee -c boiler.coffee"
   }
-  , "files": ["boiler.js", "README.md", "LICENSE", "bin/boiler"]
 }
