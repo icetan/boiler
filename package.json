@@ -22,6 +22,6 @@
   },
   "files": ["boiler.js", "README.md", "LICENSE", "bin/boiler"],
   "scripts": {
-    "prepublish": "node node_modules\\.bin\\coffee -c boiler.coffee"
+    "prepublish": "coffee -c boiler.coffee"
   }
 }
