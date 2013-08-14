@@ -108,7 +108,7 @@ class Boiler
   @registerWrap: (id, pathIdMap, code, filename) ->
     """
     register.call(this,#{id},#{JSON.stringify pathIdMap},
-    function(require,exports,module){
+    function(require,exports,module,global){var GLOBAL = global;
     // Boiler file: #{path_.relative process.cwd(), filename}
     #{code}
     });
@@ -127,7 +127,7 @@ class Boiler
       }
       function register(id,pathIdMap,factory){
         var module={exports:{}};
-        factory.call(this,emulateRequire(pathIdMap),module.exports,module);
+        factory.call(this,emulateRequire(pathIdMap),module.exports,module,window);
         window.boiler.main=idModuleMap[id]=module.exports;
       }
       everything.call(this,register);
